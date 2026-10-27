@@ -1,0 +1,127 @@
+### Sample requests for the Physio Center API.
+### Works with the REST Client extension (VS Code) and with Visual Studio's .http editor.
+### Start the API first:  dotnet run --project PhysioCenter.Api
+
+@host = http://localhost:5231
+
+### ---- Patients ----
+GET {{host}}/api/patients
+
+###
+GET {{host}}/api/patients?search=petrov
+
+###
+GET {{host}}/api/patients/1
+
+###
+POST {{host}}/api/patients
+Content-Type: application/json
+
+{
+  "firstName": "Anna",
+  "lastName": "Todorova",
+  "birthDate": "1995-04-17",
+  "gender": "F",
+  "phone": "+359 877 200 099",
+  "email": "anna.todorova@mail.example",
+  "address": "1 Example St, Sofia"
+}
+
+###
+PUT {{host}}/api/patients/6
+Content-Type: application/json
+
+{
+  "firstName": "Anna",
+  "lastName": "Todorova",
+  "birthDate": "1995-04-17",
+  "gender": "F",
+  "phone": "+359 877 200 100",
+  "email": "anna.todorova@mail.example"
+}
+
+###
+DELETE {{host}}/api/patients/6
+
+### ---- Therapists ----
+GET {{host}}/api/therapists?activeOnly=true
+
+###
+POST {{host}}/api/therapists
+Content-Type: application/json
+
+{
+  "firstName": "Maya",
+  "lastName": "Koleva",
+  "specialization": "Pediatric rehabilitation",
+  "email": "m.koleva@physio.example",
+  "isActive": true
+}
+
+### ---- Therapy plans ----
+GET {{host}}/api/therapy-plans?patientId=1
+
+###
+GET {{host}}/api/therapy-plans/1
+
+### Completed sessions, average pain / mobility and improvement over the plan
+GET {{host}}/api/therapy-plans/1/progress
+
+###
+POST {{host}}/api/therapy-plans
+Content-Type: application/json
+
+{
+  "patientId": 4,
+  "therapistId": 2,
+  "diagnosis": "Shoulder impingement",
+  "goal": "Pain-free overhead movement",
+  "startDate": "2026-11-01",
+  "endDate": "2026-12-31",
+  "plannedSessions": 8,
+  "status": "Active"
+}
+
+### ---- Sessions ----
+### A therapist's schedule for a period
+GET {{host}}/api/sessions?therapistId=1&from=2026-10-01T00:00:00&to=2026-10-31T23:59:59
+
+###
+POST {{host}}/api/sessions
+Content-Type: application/json
+
+{
+  "planId": 1,
+  "therapistId": 1,
+  "sessionDateTime": "2026-10-29T10:00:00",
+  "durationMinutes": 45,
+  "treatmentType": "Strength training",
+  "status": "Scheduled"
+}
+
+### Rejected with 409: overlaps session 5 of therapist 1 (2026-10-22 10:00-10:45)
+POST {{host}}/api/sessions
+Content-Type: application/json
+
+{
+  "planId": 1,
+  "therapistId": 1,
+  "sessionDateTime": "2026-10-22T10:30:00",
+  "durationMinutes": 45,
+  "treatmentType": "Strength training",
+  "status": "Scheduled"
+}
+
+### ---- Progress notes ----
+GET {{host}}/api/progress-notes?planId=1
+
+###
+POST {{host}}/api/progress-notes
+Content-Type: application/json
+
+{
+  "sessionId": 4,
+  "noteText": "Follow-up after the session.",
+  "painLevel": 3,
+  "mobilityScore": 7
+}
