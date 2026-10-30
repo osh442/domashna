@@ -7,7 +7,10 @@ var connectionString = builder.Configuration.GetConnectionString("PhysioCenter")
     ?? throw new InvalidOperationException("Connection string 'PhysioCenter' is missing in appsettings.json.");
 
 // The service layer (PhysioCenter.Services) owns the DbContext and all business logic.
-builder.Services.AddPhysioCenterServices(connectionString);
+var kafkaBootstrapServers = builder.Configuration["Kafka:BootstrapServers"] ?? "localhost:9092";
+var sessionsTopic = builder.Configuration["Kafka:SessionsTopic"] ?? "physio.sessions";
+
+builder.Services.AddPhysioCenterServices(connectionString, kafkaBootstrapServers, sessionsTopic);
 
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();

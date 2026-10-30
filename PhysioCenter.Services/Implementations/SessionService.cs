@@ -3,12 +3,13 @@ using Microsoft.EntityFrameworkCore;
 using PhysioCenter.Services.Data;
 using PhysioCenter.Services.Dtos;
 using PhysioCenter.Services.Entities;
+using PhysioCenter.Services.Events;
 using PhysioCenter.Services.Exceptions;
 using PhysioCenter.Services.Interfaces;
 
 namespace PhysioCenter.Services.Implementations;
 
-public class SessionService(PhysioDbContext db) : ISessionService
+public class SessionService(PhysioDbContext db, IEventPublisher events) : ISessionService
 {
     private const int MaxDurationMinutes = 240; // CK_Sessions_Duration
 
@@ -46,7 +47,9 @@ public class SessionService(PhysioDbContext db) : ISessionService
         db.Sessions.Add(session);
         await db.SaveOrTranslateAsync(ct);
 
-        return await GetByIdAsync(session.SessionId, ct);
+        var created = await GetByIdAsync(session.SessionId, ct);
+        Publish("SessionCreated", created);
+        return created;
     }
 
     public async Task<SessionResponse> UpdateAsync(int id, SessionRequest request, CancellationToken ct = default)
@@ -57,17 +60,28 @@ public class SessionService(PhysioDbContext db) : ISessionService
         Apply(session, request);
         await db.SaveOrTranslateAsync(ct);
 
-        return await GetByIdAsync(id, ct);
+        var updated = await GetByIdAsync(id, ct);
+        Publish("SessionUpdated", updated);
+        return updated;
     }
 
     public async Task DeleteAsync(int id, CancellationToken ct = default)
     {
         var session = await db.Sessions.FindAsync([id], ct) ?? throw new NotFoundException(nameof(Session), id);
 
+        var deleted = await GetByIdAsync(id, ct);
+
         // The database cascades the delete to the session's progress notes.
         db.Sessions.Remove(session);
         await db.SaveOrTranslateAsync(ct);
+
+        Publish("SessionDeleted", deleted);
     }
+
+    private void Publish(string eventType, SessionResponse s) =>
+        events.Publish(new SessionEvent(
+            eventType, s.SessionId, s.PlanId, s.PatientId, s.PatientName, s.TherapistId, s.TherapistName,
+            s.SessionDateTime, s.DurationMinutes, s.TreatmentType, s.Status, DateTime.UtcNow));
 
     private async Task ValidateAsync(SessionRequest request, Session? existing, CancellationToken ct)
     {

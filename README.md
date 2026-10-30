@@ -219,3 +219,60 @@ Cancelled sessions do not occupy a time slot or a place in the plan, exactly lik
 ### Tested
 
 The API was run against the Docker database and a smoke test of 62 checks (all CRUD operations, every rule above, cascade delete) passed. Cyrillic names were also saved, read back and searched correctly. The test data was removed afterwards, so the seed data is unchanged.
+
+
+---
+
+## 6. Microservice, message broker (Kafka) and second database
+
+The homework extends the backend with a **second, separate solution** (`PhysioCenter.Notifications/`) that has its own API and its own database, and with **Kafka + Kafka UI** running in Docker containers.
+
+```
+PhysioCenter.sln                  main solution: PhysioCenter.Api + PhysioCenter.Services   (PRODUCER)
+        |  session created / updated / deleted  ->  topic "physio.sessions"
+        v
+   Kafka (container physio-kafka, port 9092)  <--  Kafka UI (container physio-kafka-ui, http://localhost:8081)
+        |
+        v
+PhysioCenter.Notifications/PhysioCenter.Notifications.sln          (CONSUMER, separate solution)
+├── PhysioCenter.Notifications.Data/   entity + DbContext of the database PhysioNotifications
+├── PhysioCenter.Notifications.Api/    Kafka consumer (background service) + REST API, http://localhost:5232
+├── sql/                               scripts of the new database
+└── scripts/setup.ps1                  creates the database in the existing SQL Server container
+```
+
+### Kafka and Kafka UI containers
+
+`docker-compose.yml` downloads the images `apache/kafka:3.8.0` and `provectuslabs/kafka-ui:latest` and creates the containers:
+
+```bash
+docker compose up -d
+```
+
+The same without compose:
+
+```bash
+docker network create physio-net
+docker run -d --name physio-kafka --network physio-net -p 9092:9092 -e KAFKA_NODE_ID=1 -e KAFKA_PROCESS_ROLES=broker,controller -e KAFKA_LISTENERS=INTERNAL://:19092,CONTROLLER://:9093,EXTERNAL://:9092 -e KAFKA_ADVERTISED_LISTENERS=INTERNAL://physio-kafka:19092,EXTERNAL://localhost:9092 -e KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT -e KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER -e KAFKA_INTER_BROKER_LISTENER_NAME=INTERNAL -e KAFKA_CONTROLLER_QUORUM_VOTERS=1@physio-kafka:9093 -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 -e KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1 -e KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1 apache/kafka:3.8.0
+docker run -d --name physio-kafka-ui --network physio-net -p 8081:8080 -e KAFKA_CLUSTERS_0_NAME=physio -e KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=physio-kafka:19092 provectuslabs/kafka-ui:latest
+```
+
+Open **http://localhost:8081** to see the topic `physio.sessions` and its messages.
+
+### Run everything
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
+docker compose up -d
+powershell -ExecutionPolicy Bypass -File PhysioCenter.Notifications\scripts\setup.ps1
+dotnet run --project PhysioCenter.Api
+dotnet run --project PhysioCenter.Notifications\PhysioCenter.Notifications.Api
+```
+
+1. Create, change or delete a session in the Swagger UI of the main API (http://localhost:5231).
+2. The main API publishes a `SessionCreated`, `SessionUpdated` or `SessionDeleted` message to Kafka (visible in Kafka UI).
+3. The Notifications API reads the message and saves a notification in the database `PhysioNotifications`.
+4. Read it in http://localhost:5232 - `GET /api/notifications?eventType=&sessionId=&patientId=`, `GET /api/notifications/{id}`, `DELETE /api/notifications/{id}`.
+
+If Kafka is not running, the main API keeps working and only logs a warning that the message was not delivered.
+Connection strings and Kafka settings are in the `appsettings.json` of both APIs.
